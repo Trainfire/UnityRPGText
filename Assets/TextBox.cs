@@ -1,6 +1,7 @@
 ﻿using UnityEngine;
 using UnityEngine.UI;
 using System.Collections;
+using System.Collections.Generic;
 
 [System.Serializable]
 public class TextBoxData
@@ -8,7 +9,7 @@ public class TextBoxData
     public AudioClip Sound;
     public float ReadSpeed = 0.1f;
     public float SpaceHoldTime = 0f;
-    public float FullStopHoldTime = 0.25f;
+    public float EndHoldTime = 0.25f;
     public float CommaHoldTime = 0.4f;
 
     // This multipler will be used to modify how quickly the text is read when a key or button is held down.
@@ -19,6 +20,7 @@ public class TextBox : MonoBehaviour
 {
     public AudioSource AudioSource;
     public TextBoxData TextBoxData;
+    public Image Speaker;
     public Text Text;
 
     string currentString = "";
@@ -28,22 +30,39 @@ public class TextBox : MonoBehaviour
     KeyCode skipKey = KeyCode.Space;
     IEnumerator revealText;
 
-	void Start ()
+    Queue<Dialog> Dialogs = new Queue<Dialog>();
+
+    /// <summary>
+    /// Adds an instance of Dialog and then shows it. If a dialog is being shown, this dialog will be queued.
+    /// </summary>
+    /// <param name="dialog"></param>
+	public void AddDialog(Dialog dialog)
     {
-        ShowText("Legend has it that this was created in only a few minutes. But was it?... Yeah, it was.");
-	}
-	
-	public void ShowText(string text)
+        Dialogs.Enqueue(dialog);
+        if (!isRevealingText)
+            UpdateQueue();
+    }
+
+    void UpdateQueue()
     {
-        Text.text = "";
-        revealText = RevealText(text);
-        StartCoroutine(RevealText(text));
+        if (Dialogs.Count == 0)
+        {
+            Close();
+            return;
+        }
+
+        Open();
+
+        var dialog = Dialogs.Dequeue();
+        Speaker.gameObject.SetActive(!string.IsNullOrEmpty(dialog.Speaker));
+
+        StartCoroutine(RevealText(dialog.Contents));
     }
 
     IEnumerator RevealText(string text)
     {
         isRevealingText = true;
-
+        Text.text = "";
         currentString = text;
 
         var chars = text.ToCharArray();
@@ -55,13 +74,20 @@ public class TextBox : MonoBehaviour
             Text.text = str;
 
             float holdTime = TextBoxData.ReadSpeed;
+
             switch (chars[i])
             {
                 case ' ':
                     holdTime = TextBoxData.SpaceHoldTime;
                     break;
                 case '.':
-                    holdTime = TextBoxData.FullStopHoldTime;
+                    holdTime = TextBoxData.EndHoldTime;
+                    break;
+                case '!':
+                    holdTime = TextBoxData.EndHoldTime;
+                    break;
+                case '?':
+                    holdTime = TextBoxData.EndHoldTime;
                     break;
                 case ',':
                     holdTime = TextBoxData.CommaHoldTime;
@@ -76,24 +102,44 @@ public class TextBox : MonoBehaviour
             yield return new WaitForSeconds(holdTime / GetReadSpeedModifier());
         }
 
-        isRevealingText = false;
+        Finish();
 
         yield return 0;
     }
 
-    public void Skip()
+    void Finish()
     {
         isRevealingText = false;
         StopAllCoroutines();
         Text.text = currentString;
     }
 
+    void Open()
+    {
+        gameObject.SetActive(true);
+    }
+
+    void Close()
+    {
+        gameObject.SetActive(false);
+    }
+
     void LateUpdate()
     {
         isSpeedModifierActive = Input.GetKey(speedModifierKey);
 
-        if (isRevealingText && Input.GetKeyDown(skipKey))
-            Skip();
+        if (Input.GetKeyDown(skipKey))
+        {
+            if (isRevealingText)
+            {
+                Finish();
+            }
+            else
+            {
+                // Show next prompt...
+                UpdateQueue();
+            }
+        }
     }
 
     float GetReadSpeedModifier()
